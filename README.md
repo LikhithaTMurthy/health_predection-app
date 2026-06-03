@@ -25,7 +25,7 @@ A comprehensive web-based health prediction application built with Python (Flask
 
 - **👥 Patient Management**: Complete CRUD operations for patient records
 - **📊 Blood Test Data Storage**: Track glucose, haemoglobin, and cholesterol levels
-- **🤖 AI Health Predictions**: Automated health risk assessment based on blood test values
+- **🤖 AI Health Predictions**: Google Gemini API-powered health assessments with rule-based fallback support
 - **💾 Persistent Storage**: SQLite database for reliable data persistence
 - **🎨 User-Friendly Interface**: Clean, responsive Bootstrap-based UI
 - **✅ Data Validation**: Comprehensive input validation for all patient data
@@ -63,6 +63,15 @@ A comprehensive web-based health prediction application built with Python (Flask
 - **python-dotenv**: Environment variable management
 - **email-validator**: Email validation
 - **Requests**: HTTP library for API calls
+- Google Generative AI (Gemini API)
+
+## 🤖 AI Integration
+
+This application integrates the Google Gemini API to generate AI-powered health assessment remarks based on patient blood test values (Glucose, Haemoglobin, and Cholesterol).
+
+When a patient record is created or updated, the application sends the blood test values to Gemini AI and receives a health assessment with possible concerns and lifestyle recommendations.
+
+To ensure reliability, a local rule-based health assessment engine is implemented as a fallback mechanism. If the Gemini API is unavailable or encounters an error, the application automatically generates health remarks using predefined medical thresholds.
 
 ## 📦 Requirements
 

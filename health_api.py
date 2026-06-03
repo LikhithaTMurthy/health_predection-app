@@ -1,118 +1,201 @@
-import requests
+import os
 import logging
+import google.generativeai as genai
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# Configure Gemini API
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+
 class HealthPredictionAPI:
-    """Health prediction service using external API"""
-    
+    """Health prediction service using Gemini AI with rule-based fallback"""
+
     @staticmethod
     def predict_health_condition(patient_data):
         """
-        Predict health condition based on patient blood test results.
-        Uses a free health risk assessment algorithm.
-        
-        Args:
-            patient_data: dict with glucose, haemoglobin, cholesterol
-            
-        Returns:
-            dict with prediction and remarks
+        Predict health condition based on blood test values
+        using Gemini AI.
         """
+
+        glucose = patient_data.get('glucose', 0)
+        haemoglobin = patient_data.get('haemoglobin', 0)
+        cholesterol = patient_data.get('cholesterol', 0)
+
         try:
-            glucose = patient_data.get('glucose', 0)
-            haemoglobin = patient_data.get('haemoglobin', 0)
-            cholesterol = patient_data.get('cholesterol', 0)
-            
-            # Calculate health risks based on blood test values
-            remarks = HealthPredictionAPI._calculate_health_risks(
-                glucose, haemoglobin, cholesterol
-            )
-            
+            model = genai.GenerativeModel("gemini-1.5-flash")
+
+            prompt = f"""
+You are a healthcare assistant.
+
+Analyze the following blood test values:
+
+Glucose: {glucose} mg/dL
+Haemoglobin: {haemoglobin} g/dL
+Cholesterol: {cholesterol} mg/dL
+
+Provide:
+
+1. Possible health concerns
+2. Overall health assessment
+3. Lifestyle recommendations
+
+Keep the response concise (maximum 100 words).
+
+IMPORTANT:
+- Do not diagnose diseases.
+- Mention that professional medical consultation is recommended.
+- Use simple language.
+"""
+
+            response = model.generate_content(prompt)
+
+            remarks = response.text.strip()
+
             return {
                 'success': True,
                 'remarks': remarks,
                 'prediction_date': datetime.now().isoformat()
             }
+
         except Exception as e:
-            logger.error(f"Error predicting health condition: {str(e)}")
+            logger.error(f"Gemini API Error: {str(e)}")
+
+            # Fallback to local rule-based assessment
+            remarks = HealthPredictionAPI._calculate_health_risks(
+                glucose,
+                haemoglobin,
+                cholesterol
+            )
+
             return {
-                'success': False,
-                'remarks': 'Unable to generate health prediction at this time',
-                'error': str(e)
+                'success': True,
+                'remarks': remarks,
+                'prediction_date': datetime.now().isoformat(),
+                'fallback': True
             }
-    
+
     @staticmethod
     def _calculate_health_risks(glucose, haemoglobin, cholesterol):
         """
-        Calculate health risks based on blood test values.
-        This uses a basic algorithmic approach for health risk assessment.
+        Rule-based health risk assessment
+        used when Gemini is unavailable.
         """
+
         risks = []
-        age = 0  # We can incorporate age if available
-        
+
         # Glucose Assessment
         if glucose < 70:
-            risks.append("⚠️ Low Glucose (Hypoglycemia): Consider consulting with doctor")
-        elif glucose >= 70 and glucose <= 100:
-            risks.append("✓ Glucose Level: Normal")
-        elif glucose > 100 and glucose <= 125:
-            risks.append("⚠️ Elevated Glucose: Monitor closely, may indicate prediabetes")
+            risks.append(
+                "⚠️ Low Glucose (Hypoglycemia): Consider consulting a doctor"
+            )
+        elif 70 <= glucose <= 100:
+            risks.append(
+                "✓ Glucose Level: Normal"
+            )
+        elif 100 < glucose <= 125:
+            risks.append(
+                "⚠️ Elevated Glucose: May indicate prediabetes"
+            )
         elif glucose > 125:
-            risks.append("🔴 High Glucose: Risk of diabetes, immediate medical consultation recommended")
-        
+            risks.append(
+                "🔴 High Glucose: Increased diabetes risk"
+            )
+
         # Haemoglobin Assessment
         if haemoglobin < 12:
-            risks.append("⚠️ Low Haemoglobin (Anemia): Consult doctor for iron and B12 levels")
-        elif haemoglobin >= 12 and haemoglobin <= 17.5:
-            risks.append("✓ Haemoglobin Level: Normal")
+            risks.append(
+                "⚠️ Low Haemoglobin: Possible anemia"
+            )
+        elif 12 <= haemoglobin <= 17.5:
+            risks.append(
+                "✓ Haemoglobin Level: Normal"
+            )
         elif haemoglobin > 17.5:
-            risks.append("⚠️ High Haemoglobin: May indicate dehydration or blood disorders")
-        
+            risks.append(
+                "⚠️ High Haemoglobin: Possible dehydration or other conditions"
+            )
+
         # Cholesterol Assessment
         if cholesterol < 200:
-            risks.append("✓ Cholesterol Level: Desirable")
-        elif cholesterol >= 200 and cholesterol < 240:
-            risks.append("⚠️ Borderline High Cholesterol: Increase physical activity and dietary changes")
+            risks.append(
+                "✓ Cholesterol Level: Desirable"
+            )
+        elif 200 <= cholesterol < 240:
+            risks.append(
+                "⚠️ Borderline High Cholesterol"
+            )
         elif cholesterol >= 240:
-            risks.append("🔴 High Cholesterol: Risk of heart disease, medication may be needed")
-        
-        # Combined Risk Assessment
-        risk_count = sum(1 for risk in risks if "🔴" in risk)
-        warning_count = sum(1 for risk in risks if "⚠️" in risk)
-        
+            risks.append(
+                "🔴 High Cholesterol: Increased cardiovascular risk"
+            )
+
+        risk_count = sum(
+            1 for risk in risks if "🔴" in risk
+        )
+
+        warning_count = sum(
+            1 for risk in risks if "⚠️" in risk
+        )
+
         if risk_count >= 2:
-            risks.append("\n⚠️ OVERALL ASSESSMENT: High risk detected. Immediate medical consultation strongly recommended.")
+            risks.append(
+                "\n⚠️ OVERALL ASSESSMENT: High risk detected. Medical consultation recommended."
+            )
         elif warning_count >= 3:
-            risks.append("\n⚠️ OVERALL ASSESSMENT: Multiple health concerns detected. Schedule doctor appointment soon.")
+            risks.append(
+                "\n⚠️ OVERALL ASSESSMENT: Multiple concerns detected. Consider medical review."
+            )
         elif risk_count == 0 and warning_count == 0:
-            risks.append("\n✓ OVERALL ASSESSMENT: Blood test values are within normal range. Maintain healthy lifestyle.")
-        
+            risks.append(
+                "\n✓ OVERALL ASSESSMENT: Values appear within normal ranges."
+            )
+
         return " | ".join(risks)
-    
+
     @staticmethod
     def get_health_tips(patient_data):
         """
-        Get personalized health tips based on blood test results.
+        Generate health tips based on patient values.
         """
+
         glucose = patient_data.get('glucose', 0)
         cholesterol = patient_data.get('cholesterol', 0)
-        
+
         tips = []
-        
+
         if glucose > 100:
-            tips.append("- Reduce sugar and refined carbohydrate intake")
-            tips.append("- Increase physical activity (at least 30 mins daily)")
-            tips.append("- Maintain healthy body weight")
-        
+            tips.append(
+                "- Reduce sugar and refined carbohydrate intake"
+            )
+            tips.append(
+                "- Exercise at least 30 minutes daily"
+            )
+            tips.append(
+                "- Maintain a healthy body weight"
+            )
+
         if cholesterol > 200:
-            tips.append("- Increase fiber intake (soluble fiber from oats, beans)")
-            tips.append("- Reduce saturated fat consumption")
-            tips.append("- Exercise regularly")
-        
+            tips.append(
+                "- Increase dietary fiber intake"
+            )
+            tips.append(
+                "- Reduce saturated fat consumption"
+            )
+            tips.append(
+                "- Exercise regularly"
+            )
+
         if not tips:
-            tips.append("- Continue current healthy lifestyle")
-            tips.append("- Regular exercise and balanced diet")
-            tips.append("- Periodic health checkups")
-        
+            tips.append(
+                "- Continue your healthy lifestyle"
+            )
+            tips.append(
+                "- Maintain regular exercise"
+            )
+            tips.append(
+                "- Schedule periodic health checkups"
+            )
+
         return tips
